@@ -1,0 +1,40 @@
+# PocketAI .gitignore
+
+# Dependencies and build artifacts
+.llama_cpp/
+.venv/
+node_modules/
+build-android*/
+__pycache__/
+*.pyc
+
+# Model files (too large for git — download with setup scripts)
+models/*.gguf
+models/*.bin
+models/*_info.json
+
+# Compiled engine binaries
+engine/llama-server
+engine/llama-cli
+engine/engine_info.json
+
+# User data
+docs/
+.env
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets
+*.key
+*.pem
+*.p12
