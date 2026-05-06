@@ -1,0 +1,95 @@
+name: PocketAI CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-validate:
+    runs-on: ubuntu-latest
+    name: Validate source files
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install tools
+        run: npm install -g htmlhint jshint
+
+      - name: Validate HTML
+        run: htmlhint app/index.html --config .htmlhintrc || true
+
+      - name: Validate JavaScript
+        run: |
+          jshint app/js/model-manager.js --esversion=11 || true
+          jshint app/js/app.js --esversion=11 || true
+          jshint app/js/rag.js --esversion=11 || true
+          jshint app/js/plugins.js --esversion=11 || true
+
+      - name: Check shell scripts
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck setup/install.sh
+          shellcheck setup/build_engine.sh
+          shellcheck setup/download_model.sh
+          shellcheck setup/deploy_to_drive.sh
+          shellcheck setup/termux_setup.sh
+
+      - name: Verify file structure
+        run: |
+          echo "Checking required files..."
+          required_files=(
+            "app/index.html"
+            "app/manifest.json"
+            "app/sw.js"
+            "app/css/main.css"
+            "app/js/app.js"
+            "app/js/model-manager.js"
+            "app/js/rag.js"
+            "app/js/plugins.js"
+            "setup/install.sh"
+            "setup/build_engine.sh"
+            "setup/download_model.sh"
+            "setup/deploy_to_drive.sh"
+            "setup/termux_setup.sh"
+            "scripts/health_check.sh"
+            "README.md"
+          )
+          for f in "${required_files[@]}"; do
+            if [ -f "$f" ]; then
+              echo "  ✓ $f"
+            else
+              echo "  ✗ MISSING: $f"
+              exit 1
+            fi
+          done
+          echo "All required files present."
+
+  size-report:
+    runs-on: ubuntu-latest
+    name: App size report
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report app sizes
+        run: |
+          echo "=== PocketAI App Size Report ==="
+          echo ""
+          echo "PWA (app/):"
+          du -sh app/
+          echo ""
+          echo "Per file:"
+          find app/ -type f | sort | while read f; do
+            size=$(du -sh "$f" | cut -f1)
+            echo "  $size  $f"
+          done
+          echo ""
+          echo "Setup scripts:"
+          du -sh setup/
