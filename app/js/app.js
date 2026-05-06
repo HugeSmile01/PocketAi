@@ -133,11 +133,11 @@ function setServerStatus(online) {
         ? `Server ready · ${State.deviceInfo?.model?.name || 'Model'} loaded`
         : `Server offline — open Termux and run launch.sh`
     );
-    addLog(online ? '✓ Server connected' : '✗ Server offline', online ? 'ok' : 'error');
+    addLog(online ? 'Server connected' : 'Server offline', online ? 'ok' : 'error');
   }
 
   // Drive status cards
-  $('drive-conn-val').textContent = online ? 'Connected ✓' : 'Offline';
+  $('drive-conn-val').textContent = online ? 'Connected' : 'Offline';
   $('drive-conn-val').style.color = online ? 'var(--accent)' : 'var(--error)';
 }
 
@@ -162,7 +162,7 @@ async function fetchModelInfo() {
     else if (modelName.includes('3b') || modelName.includes('3B')) tier = 'mid';
     $('drive-tier-val').textContent = tier.charAt(0).toUpperCase() + tier.slice(1);
 
-    addLog(`✓ Model: ${modelName}`, 'ok');
+    addLog(`Model: ${modelName}`, 'ok');
   } catch (_) {}
 }
 
@@ -188,7 +188,7 @@ async function sendMessage() {
   // Lock UI
   State.streaming = true;
   $('btn-send').disabled = true;
-  $('btn-send').textContent = '◼';
+  $('btn-send').textContent = 'Stop';
 
   // Create assistant message placeholder
   const assistantEl = renderMessage('assistant', '');
@@ -279,15 +279,15 @@ async function sendMessage() {
 
   } catch (err) {
     fullResponse = err.name === 'TimeoutError'
-      ? '⚠ Request timed out. The model may be overloaded.'
-      : `⚠ Error: ${err.message}`;
+      ? 'Request timed out. The model may be overloaded.'
+      : `Error: ${err.message}`;
     contentEl.innerHTML = `<span style="color:var(--warn)">${fullResponse}</span>`;
   } finally {
     cursor.remove();
     State.messages.push({ role: 'assistant', content: fullResponse });
     State.streaming = false;
     $('btn-send').disabled = !State.serverOnline;
-    $('btn-send').textContent = '▶';
+    $('btn-send').textContent = 'Send';
     scrollToBottom();
   }
 }
@@ -303,7 +303,7 @@ function renderMessage(role, content) {
 
   const avatar = document.createElement('div');
   avatar.className = 'message-avatar';
-  avatar.textContent = role === 'user' ? '◎' : '◈';
+  avatar.textContent = role === 'user' ? 'U' : 'A';
 
   const bubble = document.createElement('div');
   bubble.className = 'message-content';
@@ -319,30 +319,69 @@ function renderMessage(role, content) {
 // ── Minimal Markdown renderer ─────────────────────────────
 function markdownToHTML(text) {
   if (!text) return '';
-  return text
-    // Code blocks
-    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
-      `<pre><code class="lang-${lang}">${escapeHTML(code.trim())}</code></pre>`)
-    // Inline code
-    .replace(/`([^`]+)`/g, (_, c) => `<code>${escapeHTML(c)}</code>`)
-    // Bold
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    // Italic
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    // Headers
+
+  const codeBlocks = [];
+  const inlineCodes = [];
+
+  let html = escapeHTML(text)
+    .replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+      const token = `__CODE_BLOCK_${codeBlocks.length}__`;
+      const safeLang = escapeHTML(lang || '');
+      codeBlocks.push(`<pre><code class="lang-${safeLang}">${escapeHTML(code.trim())}</code></pre>`);
+      return token;
+    })
+    .replace(/`([^`]+)`/g, (_, c) => {
+      const token = `__INLINE_CODE_${inlineCodes.length}__`;
+      inlineCodes.push(`<code>${escapeHTML(c)}</code>`);
+      return token;
+    })
     .replace(/^### (.+)$/gm, '<h4>$1</h4>')
     .replace(/^## (.+)$/gm, '<h3>$1</h3>')
     .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    // Bullet lists
-    .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
-    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
-    // Numbered lists
-    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
-    // Horizontal rule
     .replace(/^---$/gm, '<hr>')
-    // Line breaks
-    .replace(/\n\n/g, '</p><p>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  const lines = html.split('\n');
+  const out = [];
+  let inUl = false;
+  let inOl = false;
+
+  for (const line of lines) {
+    const ulMatch = line.match(/^[-*]\s+(.+)$/);
+    const olMatch = line.match(/^\d+\.\s+(.+)$/);
+
+    if (ulMatch) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul>'); inUl = true; }
+      out.push(`<li>${ulMatch[1]}</li>`);
+      continue;
+    }
+
+    if (olMatch) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol>'); inOl = true; }
+      out.push(`<li>${olMatch[1]}</li>`);
+      continue;
+    }
+
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+
+    out.push(line === '' ? '<br>' : line);
+  }
+
+  if (inUl) out.push('</ul>');
+  if (inOl) out.push('</ol>');
+
+  html = out.join('\n');
+
+  html = html
+    .replace(/__CODE_BLOCK_(\d+)__/g, (_, i) => codeBlocks[Number(i)] || '')
+    .replace(/__INLINE_CODE_(\d+)__/g, (_, i) => inlineCodes[Number(i)] || '')
     .replace(/\n/g, '<br>');
+
+  return html;
 }
 
 function escapeHTML(str) {
@@ -412,8 +451,8 @@ function renderDeviceInfo() {
     State.settings.manualTier = info.selectedTier;
   }
 
-  addLog(`✓ Device: ${info.ram.label} RAM, ${info.storage.freeGB?.toFixed(1) || '?'}GB free`, 'ok');
-  addLog(`✓ Recommended model: ${info.model.name}`, 'ok');
+  addLog(`Device: ${info.ram.label} RAM, ${info.storage.freeGB?.toFixed(1) || '?'}GB free`, 'ok');
+  addLog(`Recommended model: ${info.model.name}`, 'ok');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -543,7 +582,7 @@ function wireEvents() {
     w.id = 'welcome';
     w.className = 'welcome';
     w.innerHTML = `
-      <div class="welcome-icon">◈</div>
+      <div class="welcome-icon">PocketAI</div>
       <h2>PocketAI</h2>
       <p>Your private AI. Everything runs on your flash drive.</p>
       <div class="welcome-status" id="welcome-status">${
